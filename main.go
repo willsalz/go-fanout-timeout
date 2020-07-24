@@ -54,12 +54,19 @@ func main() {
 			// notify wg
 			defer wg.Done()
 
+			select {
+
 			// simulate work
-			time.Sleep(time.Duration((rand.Intn(workDuration))) * time.Millisecond)
+			case <-time.After(time.Duration((rand.Intn(workDuration))) * time.Millisecond):
+				// report work results
+				results <- i
+				break
 
-			// report work results
-			results <- i
-
+			// context cancelled!
+			case <-ctx.Done():
+				log.Printf("canceling work on %v\n", i)
+				break
+			}
 		}(i)
 
 	}
