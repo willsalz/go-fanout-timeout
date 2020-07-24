@@ -43,6 +43,7 @@ func main() {
 	done := make(chan time.Duration)
 
 	// results channel for workers
+	numResults := 0
 	results := make(chan int)
 
 	// simulate workers
@@ -76,6 +77,7 @@ LOOP:
 		select {
 		// print out result from worker!
 		case r := <-results:
+			numResults++
 			log.Println(r)
 		// all workers are done!
 		case d := <-done:
@@ -88,5 +90,6 @@ LOOP:
 			break LOOP
 		}
 	}
+	fmt.Printf("Processed %v jobs out of %v\n", numResults, numWorkers)
 
 }
