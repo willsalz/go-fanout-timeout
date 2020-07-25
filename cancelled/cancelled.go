@@ -2,6 +2,7 @@ package cancelled
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -28,7 +29,6 @@ func CheckHealths(timeout time.Duration, checks ...HealthCheck) map[string]error
 
 	var wg sync.WaitGroup
 	for _, check := range checks {
-		fmt.Println("CHECKING CHECK")
 		wg.Add(1)
 		goCheck := check
 		go func() {
@@ -46,8 +46,6 @@ func CheckHealths(timeout time.Duration, checks ...HealthCheck) map[string]error
 	// once they are all done, we close and the read.
 	returnedResults := make(map[string]error)
 	for result := range resultChan {
-		fmt.Println("RESULT", result)
-
 		returnedResults[result.check.HealthName()] = result.err
 	}
 
@@ -63,12 +61,31 @@ type checkResult struct {
 // so we're constructing a pipeline of one.
 func runCheck(ctx context.Context, check HealthCheck, resultChan chan<- checkResult) {
 
-	err := check.CheckHealth()
-	result := checkResult{
-		check,
-		err,
-	}
+	// HERE, we select and either the health check returns, or we get cancelled first.
+	// if we're cancelled, we throw a tiemout error into the result
 
-	resultChan <- result
+	checkChan := make(chan checkResult)
+
+	// OK, there's got to be a way to avoid having to use an extra channel, but whatever, this works.
+	go func() {
+		// as is, check health always runs to completion, even though we return after timeout.
+		// probably you should pass ctx into it, and it can cancel or something if it's smart about it.
+		err := check.CheckHealth()
+		checkChan <- checkResult{
+			check,
+			err,
+		}
+		close(checkChan)
+	}()
+
+	select {
+	case res := <-checkChan:
+		resultChan <- res
+	case <-ctx.Done():
+		resultChan <- checkResult{
+			check,
+			errors.New("TIMEOUT"),
+		}
+	}
 
 }
